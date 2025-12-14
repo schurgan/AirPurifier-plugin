@@ -15,7 +15,7 @@
 #   when running multiple plugin instances.
 
 """
-<plugin key="AirPurifier" name="AirPurifier (2 devices)" author="ManyAuthors+MultiPatch" version="0.3.0" wikilink="https://github.com/rytilahti/python-miio" externallink="https://github.com/kofec/domoticz-AirPurifier">
+<plugin key="AirPurifier" name="AirPurifier" author="ManyAuthors+MultiPatch" version="0.3.0" wikilink="https://github.com/rytilahti/python-miio" externallink="https://github.com/kofec/domoticz-AirPurifier">
     <params>
         <param field="Address" label="IP Address (comma separated: IP1,IP2)" width="300px" required="true" default="127.0.0.1,127.0.0.2"/>
         <param field="Mode1" label="AirPurifier Token (comma separated: T1,T2)" default="" width="400px" required="true"  />
@@ -132,6 +132,10 @@ class BasePlugin:
     enabled = False
 
     def __init__(self):
+        self.device_names = {
+        1: "Air Purifier 2",
+        2: "Air Purifier 2S"
+        }
         self.version = "0.3.0"
 
         # Multi-device: exactly 2 purifiers
