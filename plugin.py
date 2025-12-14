@@ -475,14 +475,14 @@ class BasePlugin:
                 gunit = off + local_unit
                 item = dict(meta)  # copy
                 # prefix name to distinguish
-                item["Name"] = f"Air Purifier {pid} - {item['Name']}"
+                item["Name"] = f"{self.device_names.get(pid, f'Air Purifier {pid}')} - {item['Name']}"
                 self.variables[gunit] = item
 
             # Add illuminance only if supported, exactly like original style
             if self.has_illuminance[pid]:
                 g = off + self.UNIT_ILLUMINANCE_SENSOR
                 self.variables[g] = {
-                    "Name":     f"Air Purifier {pid} - " + _("Illuminance sensor"),
+                    "Name": f"{self.device_names.get(pid, f'Air Purifier {pid}')} - " + _("Illuminance sensor"),
                     # Use Type/Subtype like original manual creation
                     "Type":     244,
                     "Subtype":  73,
