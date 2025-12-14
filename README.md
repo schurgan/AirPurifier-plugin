@@ -14,19 +14,9 @@ pip3 install -U python-miio
 
 * Get plugin data into DOMOTICZ/plugins directory
 ```
-cd YOUR_DOMOTICZ_PATH/plugins
-git clone https://github.com/kofec/domoticz-AirPurifier
+cd domoticz/plugins
+git clone https://github.com/schurgan/AirPurifier-plugin
 ```
-First use script "MyAir.py" to verify if you have needed python modules
-e.g:
-```
-./MyAir.py 192.168.1.1 850000000000000000000000002 --debug
-./MyAir.py -h
-usage: MyAir.py [-h] [--mode {Auto,Favorite,Idle,Silent}]
-                [--favoriteLevel {0,1,2,3,4,5,6,7,8,9,10}] [--power {ON,OFF}]
-                [--debug]
-                IPaddress token
-
 Script which comunicate with AirPurfier 2/2S.
 
 positional arguments:
@@ -53,7 +43,7 @@ Restart Domoticz
 
 ## Update
 ```
-cd YOUR_DOMOTICZ_PATH/plugins/domoticz-AirPurifier
+cd domoticz/plugins/AirPurifier-plugin
 git pull
 ```
 * Restart Domoticz
