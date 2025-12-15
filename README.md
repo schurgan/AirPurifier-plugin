@@ -36,7 +36,7 @@ python3 -c "from Crypto.Cipher import AES; print('pycryptodome OK')"
 In den Domoticz-Plugin-Ordner wechseln:
 
 cd domoticz/plugins
-git clone <GITHUB_URL> AirPurifier-plugin
+git clone https://github.com/schurgan/AirPurifier-plugin.git
 
 Rechte setzen (optional, aber oft hilfreich):
 
@@ -45,6 +45,7 @@ chmod -R 755 domoticz/plugins/AirPurifier-plugin
 Domoticz neu starten:
 
 sudo systemctl restart domoticz
+
 Update (später)
 
 cd domoticz/plugins/AirPurifier-plugin
@@ -58,8 +59,6 @@ Wähle das Plugin Xiaomi Air Purifier (Multi) aus und setze:
 Parameter
 IPs (comma separated)
 
-Code kopieren
-192.168.178.29,192.168.178.30
 Tokens (comma separated, 32 hex each)
 
 Names (optional, comma separated)
