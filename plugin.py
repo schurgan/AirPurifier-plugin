@@ -93,37 +93,31 @@ class MiioDevice:
         return s
 
     def handshake(self) -> bool:
-        # handshake: send 32 bytes with header, device_id=0, stamp=0, checksum=0xFFFFFFFF...
-        # In practice: send magic + length, unknown fields 0, token bytes set to 0xFF
-        pkt = bytearray(32)
-        struct.pack_into(">HH", pkt, 0, 0x2131, 32)  # magic, length
-        struct.pack_into(">I", pkt, 8, 0)           # device_id
-        struct.pack_into(">I", pkt, 12, 0)          # stamp
-        pkt[16:32] = b"\xFF" * 16
+    # Xiaomi MiIO hello packet: 21310020 + 28xFF
+    pkt = bytes.fromhex("21310020" + "ff" * 28)
+    try:
+        with self._sock() as s:
+            s.sendto(pkt, (self.ip, self.port))
+            data, _ = s.recvfrom(4096)
+    except Exception as e:
+        log_debug(self.debug, f"[{self.ip}] Handshake failed: {e}")
+        return False
 
-        try:
-            with self._sock() as s:
-                s.sendto(pkt, (self.ip, self.port))
-                data, _ = s.recvfrom(4096)
-        except Exception as e:
-            log_debug(self.debug, f"[{self.ip}] Handshake failed: {e}")
-            return False
+    if len(data) < 32:
+        return False
 
-        if len(data) < 32:
-            return False
+    magic, length = struct.unpack_from(">HH", data, 0)
+    if magic != 0x2131:
+        return False
 
-        magic, length = struct.unpack_from(">HH", data, 0)
-        if magic != 0x2131 or length != len(data):
-            return False
+    self.session.device_id = struct.unpack_from(">I", data, 8)[0]
+    self.session.stamp = struct.unpack_from(">I", data, 12)[0]
 
-        dev_id = struct.unpack_from(">I", data, 8)[0]
-        stamp = struct.unpack_from(">I", data, 12)[0]
-
-        self.session.device_id = dev_id
-        self.session.stamp = stamp
-        log_debug(self.debug, f"[{self.ip}] Handshake OK: device_id={dev_id} stamp={stamp}")
-        return True
-
+    log_debug(
+        self.debug,
+        f"[{self.ip}] Handshake OK device_id={self.session.device_id} stamp={self.session.stamp}"
+    )
+    return True
     def _encrypt(self, plaintext: bytes) -> bytes:
         cipher = AES.new(self.key, AES.MODE_CBC, iv=self.iv)
         return cipher.encrypt(pad(plaintext, 16, style="pkcs7"))
