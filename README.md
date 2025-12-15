@@ -24,67 +24,46 @@ Ein Domoticz-Python-Plugin zur Steuerung von **mehreren** Xiaomi Luftreinigern (
 ```bash
 sudo apt update
 sudo apt install -y git python3 python3-pip
+
 Python-Paket
 Dieses Plugin nutzt pycryptodome (für AES):
-
-bash
-Code kopieren
 sudo python3 -m pip install -U pycryptodome
+
 Test (optional):
 
-bash
-Code kopieren
 python3 -c "from Crypto.Cipher import AES; print('pycryptodome OK')"
-Installation (GitHub Clone)
-Ersetze <GITHUB_URL> durch die URL deines Repos (z.B. https://github.com/<user>/<repo>.git).
 
 In den Domoticz-Plugin-Ordner wechseln:
 
-bash
-Code kopieren
-cd /home/schurgan/domoticz/plugins
-Repo klonen:
-
-bash
-Code kopieren
+cd domoticz/plugins
 git clone <GITHUB_URL> AirPurifier-plugin
+
 Rechte setzen (optional, aber oft hilfreich):
 
-bash
-Code kopieren
-chmod -R 755 /home/schurgan/domoticz/plugins/AirPurifier-plugin
+chmod -R 755 domoticz/plugins/AirPurifier-plugin
+
 Domoticz neu starten:
 
-bash
-Code kopieren
 sudo systemctl restart domoticz
 Update (später)
-bash
-Code kopieren
-cd /home/schurgan/domoticz/plugins/AirPurifier-plugin
+
+cd domoticz/plugins/AirPurifier-plugin
 git pull
 sudo systemctl restart domoticz
+
 Domoticz Hardware anlegen
 Domoticz → Setup → Hardware → „Add“
 Wähle das Plugin Xiaomi Air Purifier (Multi) aus und setze:
 
 Parameter
 IPs (comma separated)
-Beispiel:
 
 Code kopieren
 192.168.178.29,192.168.178.30
 Tokens (comma separated, 32 hex each)
-Beispiel:
 
-Code kopieren
-0123456789abcdef0123456789abcdef,abcdef0123456789abcdef0123456789
 Names (optional, comma separated)
-Beispiel:
 
-nginx
-Code kopieren
-Air Purifier 2,Air Purifier 2S
 Poll every X seconds
 Empfehlung: 30 (Minimum im Plugin: 10)
 
@@ -134,13 +113,11 @@ Erhöhe im Hardware-Setup Pending seconds z.B. von 5 auf 7.
 Domoticz startet Plugin nicht
 Syntax prüfen:
 
-bash
-Code kopieren
 python3 -m py_compile /home/schurgan/domoticz/plugins/AirPurifier-plugin/plugin.py
+
 Prüfe, ob pycryptodome installiert ist:
 
-bash
-Code kopieren
 python3 -c "from Crypto.Cipher import AES"
+
 Sicherheit / Hinweis
 Die MiIO Tokens sind geheim. Behandle sie wie Passwörter (nicht öffentlich posten).
