@@ -94,7 +94,7 @@ class MiioDevice:
 
     def handshake(self) -> bool:
     # Xiaomi MiIO hello packet: 21310020 + 28xFF
-    pkt = bytes.fromhex("21310020" + "ff" * 28)
+        pkt = bytes.fromhex("21310020" + "ff" * 28)
     try:
         with self._sock() as s:
             s.sendto(pkt, (self.ip, self.port))
