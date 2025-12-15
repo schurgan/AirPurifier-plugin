@@ -79,6 +79,10 @@ class MiioDevice:
         self.device_id = 0
         self.stamp = 0
         self.msg_id = 1
+        
+    def reset_session(self) -> None:
+        self.device_id = 0
+        self.stamp = 0
 
     def _sock(self) -> socket.socket:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -145,24 +149,35 @@ class MiioDevice:
         return bytes(hdr) + payload_enc
 
     def _send_recv(self, payload_json: Dict[str, Any]) -> Dict[str, Any]:
-        pkt = self._build_packet(payload_json)
+        last_err = None
+        for attempt in (1, 2):  # 1. Versuch normal, 2. Versuch mit neuem Handshake
+            try:
+                pkt = self._build_packet(payload_json)
 
-        s = self._sock()
-        try:
-            s.sendto(pkt, (self.ip, self.port))
-            data, _ = s.recvfrom(4096)
-        finally:
-            s.close()
+                s = self._sock()
+                try:
+                    s.sendto(pkt, (self.ip, self.port))
+                    data, _ = s.recvfrom(4096)
+                finally:
+                    s.close()
 
-        if len(data) < 32:
-            raise RuntimeError("Bad response length")
+                if len(data) < 32:
+                    raise RuntimeError("Bad response length")
 
-        payload_enc = data[32:]
-        if not payload_enc:
-            return {}
+                payload_enc = data[32:]
+                if not payload_enc:
+                    return {}
 
-        payload_plain = self._decrypt(payload_enc)
-        return json.loads(payload_plain.decode("utf-8", errors="replace"))
+                payload_plain = self._decrypt(payload_enc)
+                return json.loads(payload_plain.decode("utf-8", errors="replace"))
+
+            except Exception as e:
+                last_err = e
+                # timeout / no response -> force new handshake next attempt
+                self.reset_session()
+                time.sleep(0.2)
+
+        raise RuntimeError(str(last_err))
 
     def call(self, method: str, params: List[Any]) -> Dict[str, Any]:
         mid = self.msg_id
@@ -376,7 +391,15 @@ class Plugin:
         dev = self.devices[pid]
 
         if local == self.U_POWER:
-            want_on = str(command).strip().lower() == "on"
+            c = str(command).strip().lower()
+
+            # Domoticz kann "On"/"Off" oder auch "Set Level" etc. schicken – wir fangen alles ab.
+            want_on = (c in ("on", "true", "1", "open", "start"))
+
+            if c in ("off", "false", "0", "close", "stop"):
+                want_on = False
+
+            Domoticz.Log(f"{self.names.get(pid,'Air Purifier')} Power command='{command}' -> want_on={want_on}")
             dev.set_power(want_on)
             self.next_poll = 0
 
