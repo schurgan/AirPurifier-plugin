@@ -295,7 +295,7 @@ class Plugin:
             pid = idx
             name = names[pid - 1] if (pid - 1) < len(names) else f"Air Purifier {pid}"
             self.names[pid] = name
-            self.devices[pid] = MiioDevice(ip=ip, token_hex=tok, debug=self.debug, timeout=4.0)
+            self.devices[pid] = MiioDevice(ip=ip, token_hex=tok, debug=self.debug, timeout=6.0)
 
         for pid in self.devices.keys():
             self._ensure_domoticz_devices(pid)
