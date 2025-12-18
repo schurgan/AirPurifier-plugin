@@ -104,25 +104,57 @@ class MiioDevice:
         return s
 
     def handshake(self):
-        # Classic MiIO hello: 21310020 + 28*FF
         pkt = bytes.fromhex("21310020" + "ff" * 28)
-        try:
-            s = self._sock()
+
+        for attempt in range(1, 4):
             try:
-                s.sendto(pkt, (self.ip, self.port))
-                data, _ = s.recvfrom(4096)
-            finally:
-                s.close()
-        except Exception as e:
-            log_debug(self.debug, f"[{self.ip}] Handshake failed: {e}")
-            return False
+                s = self._sock()
+                try:
+                    s.sendto(pkt, (self.ip, self.port))
+                    data, _ = s.recvfrom(4096)
+                finally:
+                    s.close()
+            except Exception as e:
+                log_debug(self.debug, f"[{self.ip}] Handshake attempt {attempt} failed: {e}")
+                time.sleep(0.2 * attempt)
+                continue
 
-        if len(data) < 32:
-            return False
+            if len(data) < 32:
+                time.sleep(0.2 * attempt)
+                continue
 
-        magic, _length = struct.unpack_from(">HH", data, 0)
-        if magic != 0x2131:
-            return False
+            magic, _length = struct.unpack_from(">HH", data, 0)
+            if magic != 0x2131:
+                time.sleep(0.2 * attempt)
+                continue
+
+            self.device_id = struct.unpack_from(">I", data, 8)[0]
+            self.stamp = struct.unpack_from(">I", data, 12)[0]
+            log_debug(self.debug, f"[{self.ip}] Handshake OK device_id={self.device_id} stamp={self.stamp}")
+            return True
+
+        return False
+
+    #def handshake(self):
+        ## Classic MiIO hello: 21310020 + 28*FF
+        #pkt = bytes.fromhex("21310020" + "ff" * 28)
+        #try:
+            #s = self._sock()
+            #try:
+                #s.sendto(pkt, (self.ip, self.port))
+                #data, _ = s.recvfrom(4096)
+            #finally:
+                #s.close()
+       # except Exception as e:
+            #log_debug(self.debug, f"[{self.ip}] Handshake failed: {e}")
+           # return False
+
+        #if len(data) < 32:
+            #return False
+
+        #magic, _length = struct.unpack_from(">HH", data, 0)
+        #if magic != 0x2131:
+            #return False
 
         self.device_id = struct.unpack_from(">I", data, 8)[0]
         self.stamp = struct.unpack_from(">I", data, 12)[0]
