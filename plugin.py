@@ -1,5 +1,5 @@
 """
-<plugin key="XiaomiAirPurifierMulti" name="Xiaomi Air Purifier (Multi)" author="Alex" version="1.2.0">
+<plugin key="XiaomiAirPurifierMulti" name="Xiaomi Air Purifier (Multi)" author="Alex" version="1.2.1">
     <description>
         Multi-device plugin for Xiaomi Air Purifier 2 / 2S using MiIO UDP protocol.
         No python-miio, no cryptography (avoids PyO3/subinterpreter issues). Uses pycryptodome.
@@ -453,10 +453,9 @@ class Plugin:
                             update_device(self._unit(pid, self.U_MODE), 1, str(lvl2))
 
             except Exception as e:
-                except Exception as e:
                 self.poll_errors[pid] += 1
 
-            #nur jeder 10. Fehler als Error, sonst Debug
+                #nur jeder 10. Fehler als Error, sonst Debug
                 if self.poll_errors[pid] % 10 == 0:
                     Domoticz.Error(f"{name} Poll Fehler ({self.poll_errors[pid]}x): {e}")
                 else:
