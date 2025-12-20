@@ -37,6 +37,7 @@ import json
 import hashlib
 import threading
 import queue
+from collections import defaultdict
 
 try:
     from Crypto.Cipher import AES
@@ -156,10 +157,10 @@ class MiioDevice:
         #if magic != 0x2131:
             #return False
 
-        self.device_id = struct.unpack_from(">I", data, 8)[0]
-        self.stamp = struct.unpack_from(">I", data, 12)[0]
-        log_debug(self.debug, f"[{self.ip}] Handshake OK device_id={self.device_id} stamp={self.stamp}")
-        return True
+        #self.device_id = struct.unpack_from(">I", data, 8)[0]
+        #self.stamp = struct.unpack_from(">I", data, 12)[0]
+        #log_debug(self.debug, f"[{self.ip}] Handshake OK device_id={self.device_id} stamp={self.stamp}")
+       #return True
 
     def _encrypt(self, plaintext):
         cipher = AES.new(self.key, AES.MODE_CBC, iv=self.iv)
@@ -281,6 +282,8 @@ class Plugin:
         # Debounce power too (optional but helpful)
         self.last_power_cmd_ts = {}     # pid -> timestamp
         self.last_power_cmd_val = {}    # pid -> bool
+
+        self.poll_errors = defaultdict(int)  # pid -> Anzahl Poll-Fehler
 
     # unit mapping
     def _unit(self, pid, local):
@@ -411,6 +414,7 @@ class Plugin:
             name = self.names.get(pid, f"Air Purifier {pid}")
             try:
                 power, aqi, mode, flife = self._read_state(dev)
+                self.poll_errors[pid] = 0
 
                 # AQI
                 if aqi is not None:
@@ -449,7 +453,16 @@ class Plugin:
                             update_device(self._unit(pid, self.U_MODE), 1, str(lvl2))
 
             except Exception as e:
-                Domoticz.Debug(f"{name} Poll Fehler (ignored): {e}")
+                except Exception as e:
+                self.poll_errors[pid] += 1
+
+            #nur jeder 10. Fehler als Error, sonst Debug
+                if self.poll_errors[pid] % 10 == 0:
+                    Domoticz.Error(f"{name} Poll Fehler ({self.poll_errors[pid]}x): {e}")
+                else:
+                    Domoticz.Debug(f"{name} Poll Fehler (ignored): {e}")
+
+                continue
 
     def _read_state(self, dev):
         # Standard props for purifier 2/2S
