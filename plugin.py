@@ -449,7 +449,7 @@ class Plugin:
                             update_device(self._unit(pid, self.U_MODE), 1, str(lvl2))
 
             except Exception as e:
-                Domoticz.Error(f"{name} Poll Fehler: {e}")
+                Domoticz.Debug(f"{name} Poll Fehler (ignored): {e}")
 
     def _read_state(self, dev):
         # Standard props for purifier 2/2S
