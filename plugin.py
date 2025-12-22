@@ -136,32 +136,6 @@ class MiioDevice:
 
         return False
 
-    #def handshake(self):
-        ## Classic MiIO hello: 21310020 + 28*FF
-        #pkt = bytes.fromhex("21310020" + "ff" * 28)
-        #try:
-            #s = self._sock()
-            #try:
-                #s.sendto(pkt, (self.ip, self.port))
-                #data, _ = s.recvfrom(4096)
-            #finally:
-                #s.close()
-       # except Exception as e:
-            #log_debug(self.debug, f"[{self.ip}] Handshake failed: {e}")
-           # return False
-
-        #if len(data) < 32:
-            #return False
-
-        #magic, _length = struct.unpack_from(">HH", data, 0)
-        #if magic != 0x2131:
-            #return False
-
-        #self.device_id = struct.unpack_from(">I", data, 8)[0]
-        #self.stamp = struct.unpack_from(">I", data, 12)[0]
-        #log_debug(self.debug, f"[{self.ip}] Handshake OK device_id={self.device_id} stamp={self.stamp}")
-       #return True
-
     def _encrypt(self, plaintext):
         cipher = AES.new(self.key, AES.MODE_CBC, iv=self.iv)
         return cipher.encrypt(pad(plaintext, 16, style="pkcs7"))
@@ -269,7 +243,8 @@ class Plugin:
         self.names = {}    # pid -> name
 
         self.q = queue.Queue()
-        self.worker = threading.Thread(target=self._worker, name="XAPWorker", daemon=True)
+        self.stop_event = threading.Event()
+        self.worker = None  # wird in onStart erzeugt
 
         # Pending state to prevent selector bouncing (esp. 2S)
         self.pending_until = {}  # pid -> unix time until we trust device again
@@ -279,7 +254,7 @@ class Plugin:
         self.last_mode_cmd_ts = {}      # pid -> timestamp
         self.last_mode_cmd_level = {}   # pid -> last level
 
-        # Debounce power too (optional but helpful)
+        # Debounce power too
         self.last_power_cmd_ts = {}     # pid -> timestamp
         self.last_power_cmd_val = {}    # pid -> bool
 
@@ -323,8 +298,12 @@ class Plugin:
             Domoticz.Error("IPs und Tokens müssen gleich viele sein (kommagetrennt).")
             return
 
+        # Reset state
+        self.stop_event.clear()
         self.devices.clear()
         self.names.clear()
+        self.pending_until.clear()
+        self.pending_level.clear()
 
         for idx, (ip, tok) in enumerate(zip(ips, toks), start=1):
             pid = idx
@@ -335,14 +314,46 @@ class Plugin:
         for pid in self.devices.keys():
             self._ensure_domoticz_devices(pid)
 
-        if not self.worker.is_alive():
+        # Worker neu erzeugen (wichtig für Restart!)
+        if self.worker is None or not self.worker.is_alive():
+            self.worker = threading.Thread(target=self._worker, name="XAPWorker", daemon=False)
             self.worker.start()
 
         self.next_poll = 0
         Domoticz.Heartbeat(10)
-        Domoticz.Log(f"XiaomiAirPurifierMulti v1.2.0 gestartet: {len(self.devices)} Geräte")
+        Domoticz.Log(f"XiaomiAirPurifierMulti v1.2.1 gestartet: {len(self.devices)} Geräte")
 
         self.q.put(("poll_now",))
+
+    def onStop(self):
+        Domoticz.Log("XiaomiAirPurifierMulti: onStop -> stopping worker...")
+
+        # Heartbeat aus
+        try:
+            Domoticz.Heartbeat(0)
+        except Exception:
+            pass
+
+        # Worker stoppen
+        self.stop_event.set()
+        try:
+            self.q.put_nowait(("stop",))
+        except Exception:
+            pass
+
+        # Worker join (kurz), damit Domoticz beim Reload nicht crasht
+        if self.worker is not None and self.worker.is_alive():
+            self.worker.join(timeout=3.0)
+
+        # Queue leeren, damit kein task_done mismatch bleibt
+        try:
+            while True:
+                self.q.get_nowait()
+                self.q.task_done()
+        except Exception:
+            pass
+
+        Domoticz.Log("XiaomiAirPurifierMulti: onStop done.")
 
     def _ensure_domoticz_devices(self, pid):
         name = self.names[pid]
@@ -353,7 +364,7 @@ class Plugin:
             Domoticz.Device(Name=f"{name} - AQI", Unit=u, TypeName="Custom",
                             Options={"Custom": "1;AQI"}, Used=1).Create()
 
-        # Mode selector (always)
+        # Mode selector
         u = self._unit(pid, self.U_MODE)
         if u not in Devices:
             options = {
@@ -373,14 +384,16 @@ class Plugin:
 
         # Optional Power switch
         u = self._unit(pid, self.U_POWER)
-        if self.show_power:
-            if u not in Devices:
-                Domoticz.Device(Name=f"{name} - Power", Unit=u, TypeName="Switch", Used=1).Create()
+        if self.show_power and (u not in Devices):
+            Domoticz.Device(Name=f"{name} - Power", Unit=u, TypeName="Switch", Used=1).Create()
 
     def onHeartbeat(self):
-        self.q.put(("poll",))
+        if not self.stop_event.is_set():
+            self.q.put(("poll",))
 
     def onCommand(self, Unit, Command, Level, Hue):
+        if self.stop_event.is_set():
+            return
         pid = self._pid(Unit)
         local = self._local(Unit)
         self.q.put(("cmd", pid, local, Command, Level))
@@ -388,10 +401,16 @@ class Plugin:
     # ---------------- worker ----------------
 
     def _worker(self):
-        while True:
-            msg = self.q.get()
+        while not self.stop_event.is_set():
+            try:
+                msg = self.q.get(timeout=1.0)
+            except queue.Empty:
+                continue
+
             try:
                 kind = msg[0]
+                if kind == "stop":
+                    return
                 if kind == "poll":
                     self._poll_if_due()
                 elif kind == "poll_now":
@@ -403,7 +422,10 @@ class Plugin:
             except Exception as e:
                 Domoticz.Error(f"Worker Fehler: {e}")
             finally:
-                self.q.task_done()
+                try:
+                    self.q.task_done()
+                except Exception:
+                    pass
 
     def _poll_if_due(self, force=False):
         if not force and ts() < self.next_poll:
@@ -416,27 +438,20 @@ class Plugin:
                 power, aqi, mode, flife = self._read_state(dev)
                 self.poll_errors[pid] = 0
 
-                # AQI
                 if aqi is not None:
                     update_device(self._unit(pid, self.U_AQI), 0, str(aqi))
 
-                # Filter %
                 if flife is not None:
                     update_device(self._unit(pid, self.U_FILTER_LIFE), 0, str(flife))
 
-                # Power string
                 p = str(power).lower() if power is not None else ""
 
-                # Power device (if shown)
                 if self.show_power and (self._unit(pid, self.U_POWER) in Devices):
                     if p == "on":
                         update_device(self._unit(pid, self.U_POWER), 1, "On")
                     elif p == "off":
                         update_device(self._unit(pid, self.U_POWER), 0, "Off")
 
-                # Mode selector stabilization:
-                # OFF => always Idle (0).
-                # During pending window keep requested selector level (prevents 2S bounce).
                 now = ts()
                 pend_until = self.pending_until.get(pid, 0)
 
@@ -454,17 +469,13 @@ class Plugin:
 
             except Exception as e:
                 self.poll_errors[pid] += 1
-
-                #nur jeder 10. Fehler als Error, sonst Debug
                 if self.poll_errors[pid] % 10 == 0:
                     Domoticz.Error(f"{name} Poll Fehler ({self.poll_errors[pid]}x): {e}")
                 else:
                     Domoticz.Debug(f"{name} Poll Fehler (ignored): {e}")
-
                 continue
 
     def _read_state(self, dev):
-        # Standard props for purifier 2/2S
         props = ["power", "aqi", "mode", "filter1_life"]
         res = dev.get_props(props)
         if len(res) >= 4:
@@ -497,14 +508,12 @@ class Plugin:
         dev = self.devices[pid]
         name = self.names.get(pid, f"Air Purifier {pid}")
 
-        # POWER switch (optional)
         if local == self.U_POWER:
             c = str(command).strip().lower()
             want_on = (c in ("on", "true", "1", "open", "start"))
             if c in ("off", "false", "0", "close", "stop"):
                 want_on = False
 
-            # Debounce power: ignore same request in 2 seconds
             now = ts()
             last_ts = self.last_power_cmd_ts.get(pid, 0)
             last_val = self.last_power_cmd_val.get(pid, None)
@@ -517,11 +526,9 @@ class Plugin:
             Domoticz.Log(f"{name} Power command='{command}' -> want_on={want_on}")
             dev.set_power(want_on)
 
-            # Pending protect (so poll doesn't immediately fight us)
             self.pending_until[pid] = ts() + self.pending_seconds
             self.pending_level[pid] = "0" if not want_on else self.pending_level.get(pid, "30")
 
-            # Immediate UI feedback
             if self.show_power and (self._unit(pid, self.U_POWER) in Devices):
                 update_device(self._unit(pid, self.U_POWER), 1 if want_on else 0, "On" if want_on else "Off")
             if not want_on:
@@ -531,14 +538,12 @@ class Plugin:
             self.q.put(("poll_now",))
             return
 
-        # MODE selector (always)
         if local == self.U_MODE:
             try:
                 lvl = int(level)
             except Exception:
                 lvl = 30
 
-            # Debounce: same level within 2 seconds ignored
             now = ts()
             last_ts = self.last_mode_cmd_ts.get(pid, 0)
             last_lvl = self.last_mode_cmd_level.get(pid, -999)
@@ -548,17 +553,14 @@ class Plugin:
             self.last_mode_cmd_ts[pid] = now
             self.last_mode_cmd_level[pid] = lvl
 
-            # WICHTIG: Idle = AUS (niemals set_mode("idle"), sonst schaltet 2S ein!)
             if lvl == 0:
                 Domoticz.Log(f"{name} Mode=Idle -> Power OFF")
                 dev.set_power(False)
 
-                # Immediate UI feedback
                 update_device(self._unit(pid, self.U_MODE), 1, "0")
                 if self.show_power and (self._unit(pid, self.U_POWER) in Devices):
                     update_device(self._unit(pid, self.U_POWER), 0, "Off")
 
-                # Pending window: keep selector stable
                 self.pending_until[pid] = ts() + self.pending_seconds
                 self.pending_level[pid] = "0"
 
@@ -566,7 +568,6 @@ class Plugin:
                 self.q.put(("poll_now",))
                 return
 
-            # other modes => ON + set_mode
             self.pending_until[pid] = ts() + self.pending_seconds
             self.pending_level[pid] = str(lvl)
 
@@ -588,6 +589,9 @@ _plugin = Plugin()
 
 def onStart():
     _plugin.onStart()
+
+def onStop():
+    _plugin.onStop()
 
 def onHeartbeat():
     _plugin.onHeartbeat()
