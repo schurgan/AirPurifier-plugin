@@ -1,5 +1,5 @@
 """
-<plugin key="XiaomiAirPurifierMulti" name="Xiaomi Air Purifier (Multi)" author="Alex" version="1.2.1">
+<plugin key="XiaomiAirPurifierMulti" name="Xiaomi Air Purifier (Multi)" author="Alex" version="1.2.1" externallink="https://github.com/schurgan/AirPurifier-plugin">
     <description>
         Multi-device plugin for Xiaomi Air Purifier 2 / 2S using MiIO UDP protocol.
         No python-miio, no cryptography (avoids PyO3/subinterpreter issues). Uses pycryptodome.
